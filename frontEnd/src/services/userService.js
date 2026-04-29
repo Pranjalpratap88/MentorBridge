@@ -34,6 +34,18 @@ const userService = {
   toggleUserLock: (id) => api.put(`/users/admin/${id}/toggle-lock`),
   toggleUserEnable: (id) => api.put(`/users/admin/${id}/toggle-enable`),
   getAdminStats: () => api.get('/users/admin/stats'),
+
+  // Search users to send a query to (with rich filters)
+  searchQueryTargets: (params = {}) => {
+    const q = new URLSearchParams();
+    if (params.roles?.length) q.append('roles', params.roles.join(','));
+    if (params.college)       q.append('college', params.college);
+    if (params.company)       q.append('company', params.company);
+    if (params.industry)      q.append('industry', params.industry);
+    if (params.minReputation) q.append('minReputation', params.minReputation);
+    if (params.limit)         q.append('limit', params.limit);
+    return api.get(`/users/query-targets?${q.toString()}`);
+  },
 };
 
 export default userService;

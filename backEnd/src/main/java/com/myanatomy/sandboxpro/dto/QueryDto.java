@@ -1,5 +1,6 @@
 package com.myanatomy.sandboxpro.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.myanatomy.sandboxpro.model.QueryStatus;
 import com.myanatomy.sandboxpro.model.UserRole;
 import lombok.AllArgsConstructor;
@@ -26,9 +27,22 @@ public class QueryDto {
     private Long assignedToId;
     private String assignedToName;
     private UserRole targetRole;
+
+    // Outbound: comma-separated string for display (serialized as "targetRolesStr")
+    @JsonProperty("targetRolesStr")
     private String targetRoles;
+
+    // Inbound from frontend: array of role strings (deserialized from "targetRoles")
+    @JsonProperty("targetRoles")
+    private List<String> targetRoleList;
+
+    // Inbound from frontend: multiple recipient IDs
+    private List<Long> assignedToIds;
+
     private Integer popularCount;
     private Boolean isPopular;
+    private Integer upvoteCount;
+    private Boolean hasUpvoted;
     private Boolean satisfiedWithCommunityAnswer;
     private Boolean isPrivate;
     private LocalDateTime createdAt;

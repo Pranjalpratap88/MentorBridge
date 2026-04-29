@@ -1,172 +1,655 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import resumeService from '../services/resumeService';
 
+const REVIEWER_ROLES = ['SENIOR_STUDENT', 'ALUMNI', 'MENTOR'];
+
+const roleColors = {
+  STUDENT: 'bg-blue-500/20 text-blue-300',
+  SENIOR_STUDENT: 'bg-purple-500/20 text-purple-300',
+  ALUMNI: 'bg-emerald-500/20 text-emerald-300',
+  MENTOR: 'bg-orange-500/20 text-orange-300',
+};
+
+const roleLabels = {
+  STUDENT: 'Student',
+  SENIOR_STUDENT: 'Senior Student',
+  ALUMNI: 'Alumni',
+  MENTOR: 'Mentor',
+};
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  return new Date(dateStr).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  });
+};
+
+const getInitials = (name) => {
+  if (!name) return '?';
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+};
+
+// ─── Star Rating Display ──────────────────────────────────────────────────────
+const StarDisplay = ({ rating, size = 'base' }) => (
+  <div className="flex items-center gap-0.5">
+    {[1, 2, 3, 4, 5].map(s => (
+      <span
+        key={s}
+        className={`material-symbols-outlined text-${size} ${s <= rating ? 'text-yellow-400' : 'text-white/10'}`}
+        style={{ fontVariationSettings: "'FILL' 1" }}
+      >
+        star
+      </span>
+    ))}
+  </div>
+);
+
+// ─── Star Rating Selector ─────────────────────────────────────────────────────
+const StarSelector = ({ value, onChange }) => (
+  <div className="flex items-center gap-1">
+    {[1, 2, 3, 4, 5].map(s => (
+      <button
+        key={s}
+        type="button"
+        onClick={() => onChange(s)}
+        className="transition-transform hover:scale-110"
+      >
+        <span
+          className={`material-symbols-outlined text-2xl ${s <= value ? 'text-yellow-400' : 'text-white/20 hover:text-yellow-400/50'}`}
+          style={{ fontVariationSettings: s <= value ? "'FILL' 1" : "'FILL' 0" }}
+        >
+          star
+        </span>
+      </button>
+    ))}
+    {value > 0 && (
+      <span className="text-[#9baad6] text-sm ml-2">{value}/5</span>
+    )}
+  </div>
+);
+
+// ─── Expandable Section ───────────────────────────────────────────────────────
+const ExpandableSection = ({ title, icon, content, defaultOpen = false }) => {
+  const [open, setOpen] = useState(defaultOpen);
+  if (!content) return null;
+  return (
+    <div className="border border-white/5 rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/5 transition-all"
+      >
+        <span className="flex items-center gap-2 text-[#9baad6] text-sm font-bold">
+          <span className="material-symbols-outlined text-sm">{icon}</span>
+          {title}
+        </span>
+        <span className={`material-symbols-outlined text-[#9baad6] text-sm transition-transform ${open ? 'rotate-180' : ''}`}>
+          expand_more
+        </span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 pt-1">
+          <p className="text-[#9baad6] text-sm leading-relaxed whitespace-pre-wrap">{content}</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Comment Thread ───────────────────────────────────────────────────────────
+const CommentThread = ({ review, canComment, onCommentAdded }) => {
+  const [text, setText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      await resumeService.addComment(review.id, text.trim());
+      setText('');
+      onCommentAdded();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to post comment');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 pt-4 border-t border-white/5 space-y-3">
+      {review.comments && review.comments.length > 0 ? (
+        <div className="space-y-3">
+          {review.comments.map(comment => {
+            const rc = roleColors[comment.authorRole] || 'bg-gray-500/20 text-gray-400';
+            return (
+              <div key={comment.id} className="flex gap-3">
+                <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center text-primary font-bold text-xs flex-shrink-0 overflow-hidden">
+                  {comment.authorProfilePicture ? (
+                    <img src={comment.authorProfilePicture} alt={comment.authorName} className="w-full h-full object-cover" />
+                  ) : getInitials(comment.authorName)}
+                </div>
+                <div className="flex-1 bg-white/5 rounded-xl px-3 py-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[#dee5ff] text-xs font-bold">{comment.authorName}</span>
+                    <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${rc}`}>
+                      {roleLabels[comment.authorRole] || comment.authorRole}
+                    </span>
+                    <span className="text-[#9baad6] text-xs ml-auto">{formatDate(comment.createdAt)}</span>
+                  </div>
+                  <p className="text-[#9baad6] text-xs leading-relaxed">{comment.content}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-[#9baad6] text-xs">No comments yet.</p>
+      )}
+
+      {canComment && (
+        <form onSubmit={handleSubmit} className="flex gap-2 mt-2">
+          <input
+            type="text"
+            value={text}
+            onChange={e => setText(e.target.value)}
+            placeholder="Add a comment..."
+            className="flex-1 bg-[#060e1d] border border-white/10 rounded-xl px-3 py-2 text-[#dee5ff] placeholder-[#9baad6]/40 focus:border-primary/50 focus:outline-none transition-all text-xs"
+          />
+          <button
+            type="submit"
+            disabled={submitting || !text.trim()}
+            className="px-4 py-2 bg-primary text-on-primary rounded-xl text-xs font-bold hover:bg-primary/90 disabled:opacity-50 transition-all"
+          >
+            {submitting ? '...' : 'Post'}
+          </button>
+        </form>
+      )}
+      {error && <p className="text-red-400 text-xs">{error}</p>}
+    </div>
+  );
+};
+
+// ─── Review Card ──────────────────────────────────────────────────────────────
+const ReviewCard = ({ review, canComment, onRefresh }) => {
+  const rc = roleColors[review.reviewerRole] || 'bg-gray-500/20 text-gray-400';
+
+  return (
+    <div className="bg-[#0c1427]/80 rounded-2xl p-6 border border-white/5 space-y-4">
+      {/* Reviewer header */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center text-primary font-bold text-sm overflow-hidden flex-shrink-0">
+            {review.reviewerProfilePicture ? (
+              <img src={review.reviewerProfilePicture} alt={review.reviewerName} className="w-full h-full object-cover" />
+            ) : getInitials(review.reviewerName)}
+          </div>
+          <div>
+            <p className="text-[#dee5ff] font-bold text-sm">{review.reviewerName}</p>
+            <div className="flex items-center gap-2 flex-wrap mt-0.5">
+              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${rc}`}>
+                {roleLabels[review.reviewerRole] || review.reviewerRole}
+              </span>
+              {review.reviewerCompany && (
+                <span className="text-[#9baad6] text-xs">{review.reviewerCompany}</span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          <StarDisplay rating={review.rating} />
+          <span className="text-[#9baad6] text-xs">{formatDate(review.createdAt)}</span>
+        </div>
+      </div>
+
+      {/* Overall feedback */}
+      <div>
+        <p className="text-[#9baad6] text-xs font-bold uppercase tracking-wider mb-2">Overall Feedback</p>
+        <p className="text-[#dee5ff] text-sm leading-relaxed whitespace-pre-wrap">{review.overallFeedback}</p>
+      </div>
+
+      {/* Expandable sections */}
+      <div className="space-y-2">
+        <ExpandableSection
+          title="Strengths"
+          icon="thumb_up"
+          content={review.strengthsFeedback}
+          defaultOpen={!!review.strengthsFeedback}
+        />
+        <ExpandableSection
+          title="Areas to Improve"
+          icon="trending_up"
+          content={review.improvementsFeedback}
+        />
+        <ExpandableSection
+          title="Formatting"
+          icon="format_paint"
+          content={review.formattingFeedback}
+        />
+        <ExpandableSection
+          title="Content"
+          icon="article"
+          content={review.contentFeedback}
+        />
+      </div>
+
+      {/* Comments */}
+      <CommentThread review={review} canComment={canComment} onCommentAdded={onRefresh} />
+    </div>
+  );
+};
+
+// ─── Write Review Form ────────────────────────────────────────────────────────
+const WriteReviewForm = ({ resumeId, onSubmitted }) => {
+  const [rating, setRating] = useState(0);
+  const [overallFeedback, setOverallFeedback] = useState('');
+  const [strengthsFeedback, setStrengthsFeedback] = useState('');
+  const [improvementsFeedback, setImprovementsFeedback] = useState('');
+  const [formattingFeedback, setFormattingFeedback] = useState('');
+  const [contentFeedback, setContentFeedback] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!overallFeedback.trim()) { setError('Overall feedback is required'); return; }
+    if (rating === 0) { setError('Please select a star rating'); return; }
+    setSubmitting(true);
+    setError('');
+    try {
+      await resumeService.submitReview(resumeId, {
+        overallFeedback: overallFeedback.trim(),
+        strengthsFeedback: strengthsFeedback.trim() || null,
+        improvementsFeedback: improvementsFeedback.trim() || null,
+        formattingFeedback: formattingFeedback.trim() || null,
+        contentFeedback: contentFeedback.trim() || null,
+        rating,
+      });
+      onSubmitted();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to submit review');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const textareaClass =
+    'w-full bg-[#060e1d] border border-white/10 rounded-xl px-4 py-3 text-[#dee5ff] placeholder-[#9baad6]/40 focus:border-primary/50 focus:outline-none transition-all resize-none text-sm';
+
+  return (
+    <div className="bg-[#0c1427]/80 rounded-2xl p-6 border border-white/5">
+      <h3 className="text-[#dee5ff] font-black text-lg mb-6 flex items-center gap-2">
+        <span className="material-symbols-outlined text-primary">edit</span>
+        Write a Review
+      </h3>
+
+      {error && (
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Rating */}
+        <div>
+          <label className="block text-sm font-bold text-[#9baad6] mb-2">
+            Rating <span className="text-red-400">*</span>
+          </label>
+          <StarSelector value={rating} onChange={setRating} />
+        </div>
+
+        {/* Overall feedback */}
+        <div>
+          <label className="block text-sm font-bold text-[#9baad6] mb-2">
+            Overall Feedback <span className="text-red-400">*</span>
+          </label>
+          <textarea
+            value={overallFeedback}
+            onChange={e => setOverallFeedback(e.target.value)}
+            placeholder="Share your overall impression of this resume..."
+            rows={4}
+            className={textareaClass}
+          />
+        </div>
+
+        {/* Strengths */}
+        <div>
+          <label className="block text-sm font-bold text-[#9baad6] mb-2">Strengths</label>
+          <textarea
+            value={strengthsFeedback}
+            onChange={e => setStrengthsFeedback(e.target.value)}
+            placeholder="What does this resume do well?"
+            rows={3}
+            className={textareaClass}
+          />
+        </div>
+
+        {/* Areas to improve */}
+        <div>
+          <label className="block text-sm font-bold text-[#9baad6] mb-2">Areas to Improve</label>
+          <textarea
+            value={improvementsFeedback}
+            onChange={e => setImprovementsFeedback(e.target.value)}
+            placeholder="What could be improved?"
+            rows={3}
+            className={textareaClass}
+          />
+        </div>
+
+        {/* Formatting */}
+        <div>
+          <label className="block text-sm font-bold text-[#9baad6] mb-2">Formatting Feedback</label>
+          <textarea
+            value={formattingFeedback}
+            onChange={e => setFormattingFeedback(e.target.value)}
+            placeholder="Comments on layout, spacing, fonts, visual hierarchy..."
+            rows={3}
+            className={textareaClass}
+          />
+        </div>
+
+        {/* Content */}
+        <div>
+          <label className="block text-sm font-bold text-[#9baad6] mb-2">Content Feedback</label>
+          <textarea
+            value={contentFeedback}
+            onChange={e => setContentFeedback(e.target.value)}
+            placeholder="Comments on bullet points, achievements, keywords, relevance..."
+            rows={3}
+            className={textareaClass}
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={submitting}
+          className="w-full py-3 bg-primary text-on-primary rounded-xl font-bold hover:bg-primary/90 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+        >
+          {submitting ? (
+            <>
+              <div className="w-4 h-4 border-2 border-on-primary/30 border-t-on-primary rounded-full animate-spin" />
+              Submitting...
+            </>
+          ) : (
+            <>
+              <span className="material-symbols-outlined text-sm">send</span>
+              Submit Review
+            </>
+          )}
+        </button>
+      </form>
+    </div>
+  );
+};
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 const ResumeReview = () => {
+  const { id } = useParams();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  const [resume, setResume] = useState(null);
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [pdfError, setPdfError] = useState(false);
+  const [reviewSuccess, setReviewSuccess] = useState('');
+  const [blobUrl, setBlobUrl] = useState(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const fetchResume = useCallback(async () => {
+    try {
+      const res = await resumeService.getById(id);
+      setResume(res.data);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Resume not found');
+    }
+  }, [id]);
+
+  const fetchReviews = useCallback(async () => {
+    try {
+      const res = await resumeService.getReviews(id);
+      setReviews(res.data || []);
+    } catch (err) {
+      console.error('Failed to load reviews', err);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      await Promise.all([fetchResume(), fetchReviews()]);
+      setLoading(false);
+    };
+    load();
+  }, [fetchResume, fetchReviews]);
+
+  const handleRefresh = useCallback(() => {
+    fetchResume();
+    fetchReviews();
+  }, [fetchResume, fetchReviews]);
+
+  // Load PDF as blob (with JWT) once resume is confirmed accessible
+  useEffect(() => {
+    if (!resume) return;
+    setPdfLoading(true);
+    setPdfError(false);
+    resumeService.getPdfBlobUrl(id)
+      .then(url => { setBlobUrl(url); setPdfLoading(false); })
+      .catch(() => { setPdfError(true); setPdfLoading(false); });
+    // Revoke old blob URL on cleanup
+    return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
+  }, [resume, id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleReviewSubmitted = async () => {
+    setReviewSuccess('Review submitted successfully!');
+    await handleRefresh();
+    setTimeout(() => setReviewSuccess(''), 4000);
+  };
+
+  if (loading) {
     return (
-        <React.Fragment>
-            {/* SideNavBar (Authority: JSON & Conflict Resolution) */}
-
-{/* Main Content Canvas */}
-
-{/* TopAppBar (Authority: JSON) */}
-
-<section className="flex-1 p-8 grid grid-cols-12 gap-8 items-start">
-{/* Document Workspace (The Canvas) */}
-<div className="col-span-12 xl:col-span-8 flex flex-col gap-6">
-{/* Document Header */}
-<div className="flex justify-between items-end">
-<div>
-<div className="flex items-center gap-2 text-primary text-xs font-bold uppercase tracking-widest mb-1">
-<span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
-                            Live Review Session
-                        </div>
-<h2 className="text-3xl font-headline font-extrabold text-on-surface tracking-tight">Technical_Resume_V4.pdf</h2>
-<p className="text-on-surface-variant text-sm mt-1">Uploaded 2 hours ago • Reviewed by Sarah J.</p>
-</div>
-<div className="flex gap-3">
-<button className="px-5 py-2.5 rounded-xl bg-surface-container-high text-on-surface font-semibold text-sm hover:bg-surface-bright transition-colors flex items-center gap-2">
-<span className="material-symbols-outlined text-lg">download</span>
-                            Export
-                        </button>
-<button className="px-5 py-2.5 rounded-xl bg-gradient-to-br from-primary to-primary-container text-on-primary font-bold text-sm shadow-lg hover:scale-105 transition-transform">
-                            Update Document
-                        </button>
-</div>
-</div>
-{/* Document Viewer */}
-<div className="relative group">
-{/* Annotation Layer Overlay (Abstract Representation) */}
-<div className="absolute inset-0 z-10 pointer-events-none">
-<div className="absolute top-[15%] left-[20%] w-48 h-12 border-2 border-primary/40 bg-primary/5 rounded-lg backdrop-blur-[2px] cursor-pointer pointer-events-auto hover:bg-primary/10 transition-colors" title="View Annotation"></div>
-<div className="absolute top-[42%] left-[15%] w-64 h-24 border-2 border-secondary/40 bg-secondary/5 rounded-lg backdrop-blur-[2px] cursor-pointer pointer-events-auto hover:bg-secondary/10 transition-colors" title="View Annotation"></div>
-<div className="absolute top-[75%] left-[25%] w-56 h-10 border-2 border-primary/40 bg-primary/5 rounded-lg backdrop-blur-[2px] cursor-pointer pointer-events-auto hover:bg-primary/10 transition-colors" title="View Annotation"></div>
-</div>
-{/* PDF Placeholder */}
-<div className="bg-surface-container-low rounded-2xl overflow-hidden shadow-2xl border border-outline-variant/5 min-h-[1000px] flex justify-center p-12">
-<div className="w-full max-w-3xl bg-white shadow-inner p-16 min-h-[900px] text-slate-800 font-serif relative">
-{/* Faux Content for Resume */}
-<div className="text-center mb-10">
-<h3 className="text-3xl font-bold uppercase tracking-widest mb-2">Alex Rivera</h3>
-<p className="text-sm">San Francisco, CA • alex.rivera@example.com • +1 (555) 000-0000</p>
-</div>
-<div className="mb-8">
-<h4 className="border-b border-slate-300 font-bold uppercase mb-4 text-sm tracking-wider">Experience</h4>
-<div className="mb-6">
-<div className="flex justify-between font-bold">
-<span>Senior Software Engineer • TechFlow Inc.</span>
-<span>2021 — Present</span>
-</div>
-<ul className="list-disc ml-5 mt-2 text-sm leading-relaxed space-y-1">
-<li>Architected and deployed high-scale microservices architecture serving 2M+ users.</li>
-<li>Optimized database queries reducing latency by 45% using Redis caching.</li>
-<li>Led a team of 6 developers following Agile methodologies.</li>
-</ul>
-</div>
-<div className="mb-6">
-<div className="flex justify-between font-bold">
-<span>Full Stack Developer • Innovate Solutions</span>
-<span>2018 — 2021</span>
-</div>
-<ul className="list-disc ml-5 mt-2 text-sm leading-relaxed space-y-1">
-<li>Developed responsive web applications using React and Node.js.</li>
-<li>Implemented CI/CD pipelines increasing deployment frequency by 200%.</li>
-</ul>
-</div>
-</div>
-<div className="mb-8">
-<h4 className="border-b border-slate-300 font-bold uppercase mb-4 text-sm tracking-wider">Education</h4>
-<div className="flex justify-between font-bold">
-<span>B.S. Computer Science • Stanford University</span>
-<span>2014 — 2018</span>
-</div>
-</div>
-<div className="absolute top-0 right-0 p-8 opacity-5 select-none pointer-events-none text-8xl font-black rotate-12">
-                                DRAFT
-                            </div>
-</div>
-</div>
-</div>
-</div>
-{/* Feedback Sidebar */}
-<div className="col-span-12 xl:col-span-4 flex flex-col gap-6 sticky top-24">
-<div className="flex items-center justify-between mb-2">
-<h3 className="text-lg font-headline font-bold text-on-surface">Feedback Threads</h3>
-<span className="bg-secondary-container text-on-secondary-container text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter">3 Active</span>
-</div>
-{/* Feedback Cards (Asymmetric/High-End) */}
-<div className="space-y-6">
-{/* Feedback Card 1 */}
-<div className="glass-panel p-6 rounded-2xl border-l-4 border-primary transition-all hover:translate-x-1 duration-300 shadow-xl">
-<div className="flex items-center gap-3 mb-4">
-<img className="w-10 h-10 rounded-full object-cover" data-alt="profile photo of a female technology executive with confident expression, warm lighting, architectural background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBaHNs0VrtToiDtgIgC1FgiMV-DxJLAO2_4DGk5MONq0GGYlH71B_qYbVUc_yw0LUr9S_7ttV66PxE1TCgwIqHnLiCjMlH18sNpbOtqxwonogHkA7u-zVU9ANNiOzya385tdhkEcqv4r_JvXZnUE099pqkvol1kXQWRA69PtNb3JBSS1CFhWbfvILJdqpogM5sniJNpBloPRu5PM5Ge7G0318--G2WDZEkkJ-l5UPFC_4ve6KyAbtkkebWqG6FgeKnctL9LmqSBvll9" />
-<div>
-<div className="text-sm font-bold text-on-surface">Sarah J. <span className="text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded ml-2">MENTOR</span></div>
-<div className="text-[10px] text-on-surface-variant">Engineering Lead @ Google</div>
-</div>
-</div>
-<p className="text-sm leading-relaxed text-on-surface-variant italic mb-4">"Your summary of TechFlow experience is strong, but let's quantify the business impact more. Did that 45% latency reduction improve conversion?"</p>
-<div className="flex items-center justify-between">
-<button className="text-xs font-bold text-primary flex items-center gap-1 hover:underline">
-<span className="material-symbols-outlined text-sm">reply</span> Reply
-                            </button>
-<span className="text-[10px] text-outline">15m ago</span>
-</div>
-</div>
-{/* Feedback Card 2 */}
-<div className="glass-panel p-6 rounded-2xl border-l-4 border-secondary transition-all hover:translate-x-1 duration-300 shadow-xl">
-<div className="flex items-center gap-3 mb-4">
-<img className="w-10 h-10 rounded-full object-cover" data-alt="headshot of a mature professional male with glasses, soft natural lighting, creative studio background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCXwTPtK3nwDWrlkA-n74xM7_iCvZHEZgAx0rb6Ces7G1_xN3iq0CuzedBUrBOFuEijP_jAcqM24HgaUPKwYT24x7ZBrnQKbpO-y6gPYIDvJ2nbKJ_otS8lbax9PIUi4Whqx9X2buUi7fzyjAZtKtIBbOASrpRPC0NfmTv8lEmqZ0MQPgejVUQh5myA61vIHuAYCFKztAEnYzQPcvDRGeAmgL-40AVEVsceyyOrKZihsgdpriucS3BZhhyiKjt-JQWAdFO4Tscisf5O" />
-<div>
-<div className="text-sm font-bold text-on-surface">Marcus Thorne</div>
-<div className="text-[10px] text-on-surface-variant">Senior Recruiter</div>
-</div>
-</div>
-<p className="text-sm leading-relaxed text-on-surface-variant mb-4">"The layout is a bit dense here. Consider increasing the line-height for the bullet points to improve scannability for ATS systems."</p>
-<div className="flex items-center justify-between">
-<button className="text-xs font-bold text-primary flex items-center gap-1 hover:underline">
-<span className="material-symbols-outlined text-sm">reply</span> Reply
-                            </button>
-<span className="text-[10px] text-outline">1h ago</span>
-</div>
-</div>
-{/* Feedback Card 3 */}
-<div className="bg-surface-container-high/40 p-6 rounded-2xl border-l-4 border-outline transition-all hover:translate-x-1 duration-300">
-<div className="flex items-center gap-3 mb-4">
-<div className="w-10 h-10 rounded-full bg-tertiary-container flex items-center justify-center text-on-tertiary-container font-bold">AI</div>
-<div>
-<div className="text-sm font-bold text-on-surface">Nexus Assistant</div>
-<div className="text-[10px] text-on-surface-variant">AI Analysis</div>
-</div>
-</div>
-<p className="text-sm leading-relaxed text-on-surface-variant mb-4">"Keyword 'Distributed Systems' is missing from your Innovate Solutions description. Adding it might improve your match for the roles you're browsing."</p>
-<div className="flex gap-2">
-<button className="text-[10px] font-bold bg-primary/20 text-primary px-3 py-1 rounded-full">Apply Auto-Fix</button>
-<button className="text-[10px] font-bold text-on-surface-variant px-3 py-1 rounded-full border border-outline-variant/30">Dismiss</button>
-</div>
-</div>
-</div>
-{/* Add Comment Input */}
-<div className="mt-4 p-4 rounded-2xl bg-surface-container-low border border-outline-variant/10 focus-within:border-primary/50 transition-all">
-<textarea className="w-full bg-transparent border-none outline-none text-sm text-on-surface placeholder:text-outline resize-none h-24" placeholder="Ask a question about a specific section..."></textarea>
-<div className="flex justify-between items-center mt-2">
-<div className="flex gap-2">
-<button className="p-2 text-outline hover:text-primary transition-colors"><span className="material-symbols-outlined text-lg">attach_file</span></button>
-<button className="p-2 text-outline hover:text-primary transition-colors"><span className="material-symbols-outlined text-lg">alternate_email</span></button>
-</div>
-<button className="bg-primary text-on-primary px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider active:scale-95 transition-transform">Post Question</button>
-</div>
-</div>
-</div>
-</section>
-{/* Footer (Authority: JSON) */}
-
-
-{/* Contextual FAB (Restricted Use) */}
-<button className="fixed bottom-8 right-8 w-16 h-16 bg-gradient-to-br from-primary to-primary-container rounded-full shadow-[0_10px_30px_rgba(144,147,255,0.4)] flex items-center justify-center text-on-primary hover:scale-110 active:scale-95 transition-all z-50">
-<span className="material-symbols-outlined text-3xl">add_comment</span>
-</button>
-        </React.Fragment>
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+      </div>
     );
+  }
+
+  if (error || !resume) {
+    return (
+      <div className="px-8 py-10 max-w-4xl mx-auto text-center space-y-4">
+        <span className="material-symbols-outlined text-[#9baad6] text-5xl block">error_outline</span>
+        <p className="text-[#dee5ff] font-bold text-lg">{error || 'Resume not found'}</p>
+        <button
+          onClick={() => navigate(-1)}
+          className="text-primary hover:underline text-sm"
+        >
+          ← Go back
+        </button>
+      </div>
+    );
+  }
+
+  const isOwner = user && resume.ownerId === user.id;
+  const canReview = user && !isOwner && REVIEWER_ROLES.includes(user.userRole);
+  const hasAlreadyReviewed = reviews.some(r => r.reviewerId === user?.id);
+  const ownerRc = roleColors[resume.ownerRole] || 'bg-gray-500/20 text-gray-400';
+
+  const handleDownload = () => {
+    if (!blobUrl) return;
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = resume.originalFileName || 'resume.pdf';
+    a.click();
+  };
+
+  return (
+    <div className="px-4 md:px-8 py-10 max-w-7xl mx-auto space-y-6">
+      {/* Back button */}
+      <button
+        onClick={() => navigate(-1)}
+        className="flex items-center gap-2 text-[#9baad6] hover:text-primary transition-colors text-sm font-medium"
+      >
+        <span className="material-symbols-outlined text-lg">arrow_back</span>
+        Back
+      </button>
+
+      {reviewSuccess && (
+        <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-sm">
+          {reviewSuccess}
+        </div>
+      )}
+
+      {/* Resume info header */}
+      <div className="bg-[#0c1427]/80 rounded-2xl p-6 border border-white/5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center text-primary font-bold overflow-hidden flex-shrink-0">
+              {resume.ownerProfilePicture ? (
+                <img src={resume.ownerProfilePicture} alt={resume.ownerName} className="w-full h-full object-cover" />
+              ) : getInitials(resume.ownerName)}
+            </div>
+            <div>
+              <h1 className="text-2xl font-black text-[#dee5ff] leading-tight">
+                {resume.title || resume.originalFileName}
+              </h1>
+              <div className="flex items-center gap-2 flex-wrap mt-1">
+                <span className="text-[#9baad6] text-sm">{resume.ownerName}</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${ownerRc}`}>
+                  {roleLabels[resume.ownerRole] || resume.ownerRole}
+                </span>
+                {resume.ownerCollege && (
+                  <span className="text-[#9baad6] text-xs flex items-center gap-1">
+                    <span className="material-symbols-outlined text-xs">school</span>
+                    {resume.ownerCollege}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 text-sm text-[#9baad6] flex-shrink-0">
+            <span className="flex items-center gap-1">
+              <span className="material-symbols-outlined text-sm">calendar_today</span>
+              {formatDate(resume.uploadedAt)}
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="material-symbols-outlined text-sm">rate_review</span>
+              {reviews.length} {reviews.length === 1 ? 'review' : 'reviews'}
+            </span>
+          </div>
+        </div>
+
+        {resume.reviewNote && (
+          <div className="mt-4 p-3 bg-primary/5 border border-primary/10 rounded-xl">
+            <p className="text-[#9baad6] text-sm italic">
+              <span className="font-bold text-primary not-italic">Note from owner: </span>
+              {resume.reviewNote}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Two-column layout: PDF + Reviews */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        {/* PDF Viewer */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-black text-[#dee5ff]">Resume PDF</h2>
+            <button
+              onClick={handleDownload}
+              disabled={!blobUrl}
+              className="flex items-center gap-1.5 px-4 py-2 bg-primary/10 text-primary rounded-xl text-sm font-bold hover:bg-primary/20 disabled:opacity-50 transition-all"
+            >
+              <span className="material-symbols-outlined text-sm">download</span>
+              Download
+            </button>
+          </div>
+
+          <div className="bg-[#0c1427]/80 rounded-2xl border border-white/5 overflow-hidden">
+            {pdfLoading ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-3">
+                <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+                <p className="text-[#9baad6] text-sm">Loading PDF...</p>
+              </div>
+            ) : pdfError ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-4">
+                <span className="material-symbols-outlined text-[#9baad6] text-5xl">picture_as_pdf</span>
+                <p className="text-[#9baad6] text-sm">Unable to preview PDF in browser.</p>
+                <button
+                  onClick={handleDownload}
+                  disabled={!blobUrl}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 disabled:opacity-50 transition-all"
+                >
+                  <span className="material-symbols-outlined text-sm">download</span>
+                  Download PDF
+                </button>
+              </div>
+            ) : (
+              <iframe
+                src={blobUrl}
+                title="Resume PDF"
+                className="w-full"
+                style={{ height: '75vh', minHeight: '500px' }}
+                onError={() => setPdfError(true)}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Reviews + Write Review */}
+        <div className="space-y-6">
+          {/* Reviews list */}
+          <div>
+            <h2 className="text-lg font-black text-[#dee5ff] mb-4">
+              Reviews
+              <span className="ml-2 text-sm font-normal text-[#9baad6]">({reviews.length})</span>
+            </h2>
+
+            {reviews.length === 0 ? (
+              <div className="bg-[#0c1427]/80 rounded-2xl p-10 border border-white/5 text-center">
+                <span className="material-symbols-outlined text-[#9baad6] text-4xl mb-3 block">rate_review</span>
+                <p className="text-[#dee5ff] font-bold mb-1">No reviews yet</p>
+                <p className="text-[#9baad6] text-sm">
+                  {canReview ? 'Be the first to review this resume!' : 'Check back later for feedback.'}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {reviews.map(review => (
+                  <ReviewCard
+                    key={review.id}
+                    review={review}
+                    canComment={isOwner || review.reviewerId === user?.id}
+                    onRefresh={handleRefresh}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Write review form */}
+          {canReview && !hasAlreadyReviewed && (
+            <WriteReviewForm resumeId={id} onSubmitted={handleReviewSubmitted} />
+          )}
+
+          {canReview && hasAlreadyReviewed && (
+            <div className="bg-[#0c1427]/80 rounded-2xl p-6 border border-white/5 text-center">
+              <span className="material-symbols-outlined text-green-400 text-3xl mb-2 block">check_circle</span>
+              <p className="text-[#dee5ff] font-bold text-sm">You've already reviewed this resume</p>
+              <p className="text-[#9baad6] text-xs mt-1">Thank you for your contribution!</p>
+            </div>
+          )}
+
+          {!user && (
+            <div className="bg-[#0c1427]/80 rounded-2xl p-6 border border-white/5 text-center">
+              <p className="text-[#9baad6] text-sm">Sign in to write a review</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default ResumeReview;

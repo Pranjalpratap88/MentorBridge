@@ -83,6 +83,46 @@ public class NotificationService {
         notificationRepository.save(n);
     }
 
+    @Transactional
+    public void createResumeReviewNotification(User recipient, User actor, Long resumeId, String resumeTitle) {
+        Notification n = Notification.builder()
+                .recipient(recipient)
+                .actor(actor)
+                .type(NotificationType.QUERY_RESPONSE_RECEIVED) // reuse type for now
+                .title(actor.getFullName() + " reviewed your resume")
+                .message("\"" + truncate(resumeTitle, 80) + "\" received a new review from " + actor.getFullName())
+                .actionUrl("/resume")
+                .relatedQueryId(resumeId)
+                .build();
+        notificationRepository.save(n);
+    }
+
+    @Transactional
+    public void createConnectionRequestNotification(User recipient, User actor) {
+        Notification n = Notification.builder()
+                .recipient(recipient)
+                .actor(actor)
+                .type(NotificationType.QUERY_ASSIGNED)
+                .title(actor.getFullName() + " wants to connect")
+                .message(actor.getFullName() + " sent you a connection request")
+                .actionUrl("/connections")
+                .build();
+        notificationRepository.save(n);
+    }
+
+    @Transactional
+    public void createConnectionAcceptedNotification(User recipient, User actor) {
+        Notification n = Notification.builder()
+                .recipient(recipient)
+                .actor(actor)
+                .type(NotificationType.QUERY_ASSIGNED)
+                .title(actor.getFullName() + " accepted your request")
+                .message("You are now connected with " + actor.getFullName() + ". You can now message each other.")
+                .actionUrl("/messages")
+                .build();
+        notificationRepository.save(n);
+    }
+
     // ── Read operations ───────────────────────────────────────────────────────
 
     public List<NotificationDto> getNotificationsForUser(String username) {

@@ -52,6 +52,14 @@ public class Query {
     @Builder.Default
     private Boolean isPopular = false;
 
+    // Upvotes — users marking a query as helpful/relatable
+    @Builder.Default
+    private Integer upvoteCount = 0;
+
+    // Comma-separated user IDs who upvoted (to prevent double-voting)
+    @Column(columnDefinition = "TEXT")
+    private String upvotedByIds;
+
     // Whether the student was satisfied with the community answer
     @Builder.Default
     private Boolean satisfiedWithCommunityAnswer = false;

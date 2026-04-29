@@ -47,6 +47,9 @@ const queryService = {
   // Resend query to a specific expert after not being satisfied
   resendToExpert: (queryId, expertId) =>
     api.put(`/queries/${queryId}/resend/${expertId}`),
+
+  // Toggle upvote on a query
+  upvoteQuery: (queryId) => api.put(`/queries/${queryId}/upvote`),
 };
 
 export default queryService;

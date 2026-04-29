@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useHistory } from '../../context/HistoryContext';
+import { useTheme } from '../../context/ThemeContext';
 import notificationService from '../../services/notificationService';
 
 const Layout = () => {
@@ -9,6 +10,7 @@ const Layout = () => {
     const navigate = useNavigate();
     const { user, logout } = useAuth();
     const { canGoBack, goBack } = useHistory();
+    const { theme, toggleTheme, isDark } = useTheme();
     const [unreadCount, setUnreadCount] = useState(0);
 
     const isAdmin = user?.roles?.includes('ADMIN');
@@ -54,6 +56,7 @@ const Layout = () => {
         { name: 'Query Feed',   path: '/queries',    icon: 'dynamic_feed' },
         { name: 'Resume',       path: '/resume',     icon: 'description' },
         { name: 'Networking',   path: '/networking', icon: 'hub' },
+        { name: 'Messages',     path: '/messages',   icon: 'chat' },
         { name: 'Leaderboard',  path: '/leaderboard',icon: 'insights' },
         { name: 'Profile',      path: '/profile',    icon: 'person' },
         { name: 'Feedback',     path: '/feedback',   icon: 'rate_review' },
@@ -199,6 +202,18 @@ const Layout = () => {
                     </div>
 
                     <div className="flex items-center gap-3">
+                        {/* Theme toggle */}
+                        <button
+                            onClick={toggleTheme}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg border border-white/5 transition-all hover:bg-white/[0.06] active:scale-90"
+                            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                            style={{ color: 'var(--text-secondary)' }}
+                        >
+                            <span className="material-symbols-outlined text-base">
+                                {isDark ? 'light_mode' : 'dark_mode'}
+                            </span>
+                        </button>
+
                         {!isAdmin && (
                             <Link
                                 to="/notifications"

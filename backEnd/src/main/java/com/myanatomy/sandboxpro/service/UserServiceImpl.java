@@ -150,6 +150,56 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    public List<UserDto> searchUsersForQuery(String currentUsername, List<String> roles,
+                                              String college, String company,
+                                              String industry, Integer minReputation,
+                                              int limit) {
+        User currentUser = userRepository.findByUsername(currentUsername)
+                .orElseThrow(() -> new AppException("User not found", HttpStatus.NOT_FOUND));
+
+        // Resolve target roles
+        List<UserRole> targetRoles;
+        if (roles != null && !roles.isEmpty()) {
+            targetRoles = roles.stream()
+                    .map(r -> {
+                        try { return UserRole.valueOf(r.toUpperCase()); }
+                        catch (IllegalArgumentException e) { return null; }
+                    })
+                    .filter(r -> r != null && r != UserRole.ADMIN && r != UserRole.STUDENT)
+                    .collect(Collectors.toList());
+        } else {
+            targetRoles = Arrays.asList(UserRole.SENIOR_STUDENT, UserRole.ALUMNI, UserRole.MENTOR);
+        }
+
+        if (targetRoles.isEmpty()) {
+            targetRoles = Arrays.asList(UserRole.SENIOR_STUDENT, UserRole.ALUMNI, UserRole.MENTOR);
+        }
+
+        final List<UserRole> finalRoles = targetRoles;
+        final int effectiveLimit = Math.min(limit <= 0 ? 15 : limit, 15);
+
+        return userRepository.findByUserRoleInAndEmailVerifiedTrueOrderByFullNameAsc(finalRoles)
+                .stream()
+                .filter(u -> !u.getId().equals(currentUser.getId()))
+                .filter(u -> Boolean.TRUE.equals(u.getAccountEnabled()) && !Boolean.TRUE.equals(u.getAccountLocked()))
+                .filter(u -> college == null || college.isBlank() ||
+                        (u.getCollege() != null && u.getCollege().toLowerCase().contains(college.toLowerCase())))
+                .filter(u -> company == null || company.isBlank() ||
+                        (u.getCurrentCompany() != null && u.getCurrentCompany().toLowerCase().contains(company.toLowerCase())))
+                .filter(u -> industry == null || industry.isBlank() ||
+                        (u.getIndustry() != null && u.getIndustry().toLowerCase().contains(industry.toLowerCase())))
+                .filter(u -> minReputation == null || minReputation <= 0 ||
+                        (u.getReputationPoints() != null && u.getReputationPoints() >= minReputation))
+                // Sort by reputation descending so best matches come first
+                .sorted((a, b) -> Integer.compare(
+                        b.getReputationPoints() != null ? b.getReputationPoints() : 0,
+                        a.getReputationPoints() != null ? a.getReputationPoints() : 0))
+                .limit(effectiveLimit)
+                .map(this::mapToDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public List<UserDto> getAllUsers() {
         return userRepository.findAll().stream()
                 .filter(u -> u.getUserRole() != UserRole.ADMIN)

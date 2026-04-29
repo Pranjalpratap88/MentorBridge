@@ -14,6 +14,10 @@ public interface UserService {
     List<UserDto> getNetworkUsers(String usernameOrEmail);
     List<UserDto> searchExperts(String currentUsername, String role, String industry, String college);
     Map<String, Object> getDashboardStats(String username);
+    List<UserDto> searchUsersForQuery(String currentUsername, List<String> roles,
+                                      String college, String company,
+                                      String industry, Integer minReputation,
+                                      int limit);
     List<UserDto> getAllUsers();
     UserDto toggleUserLock(Long userId);
     UserDto toggleUserEnable(Long userId);

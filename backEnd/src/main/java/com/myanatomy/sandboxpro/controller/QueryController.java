@@ -88,6 +88,17 @@ public class QueryController {
         return ResponseEntity.ok(ApiResponse.success("Unresolved queries fetched", queries));
     }
 
+    @PutMapping("/{id}/upvote")
+    public ResponseEntity<ApiResponse<QueryDto>> upvoteQuery(
+            @PathVariable Long id, Authentication authentication) {
+        try {
+            QueryDto query = queryService.toggleUpvote(id, authentication.getName());
+            return ResponseEntity.ok(ApiResponse.success("Upvote toggled", query));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
     @PostMapping("/{id}/responses")
     public ResponseEntity<ApiResponse<ResponseDto>> submitResponse(
             @PathVariable Long id,

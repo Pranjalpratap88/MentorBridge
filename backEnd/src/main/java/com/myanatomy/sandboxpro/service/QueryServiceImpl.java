@@ -42,7 +42,15 @@ public class QueryServiceImpl implements QueryService {
         User student = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // Check if a similar query already exists (same tags) to increment popular count
+        // Resolve targetRoles: frontend sends targetRoleList (List<String>)
+        // Store as comma-separated string in targetRoles column
+        String resolvedTargetRoles = null;
+        if (queryDto.getTargetRoleList() != null && !queryDto.getTargetRoleList().isEmpty()) {
+            resolvedTargetRoles = String.join(",", queryDto.getTargetRoleList());
+        } else if (queryDto.getTargetRoles() != null && !queryDto.getTargetRoles().isBlank()) {
+            resolvedTargetRoles = queryDto.getTargetRoles();
+        }
+
         Query.QueryBuilder builder = Query.builder()
                 .title(queryDto.getTitle())
                 .content(queryDto.getContent())
@@ -50,23 +58,26 @@ public class QueryServiceImpl implements QueryService {
                 .student(student)
                 .status(QueryStatus.OPEN)
                 .targetRole(queryDto.getTargetRole())
-                .targetRoles(queryDto.getTargetRoles() != null ? String.join(",", queryDto.getTargetRoles()) : null)
+                .targetRoles(resolvedTargetRoles)
                 .popularCount(1)
                 .isPopular(false)
                 .isPrivate(Boolean.TRUE.equals(queryDto.getIsPrivate()))
                 .satisfiedWithCommunityAnswer(false);
 
-        // If a specific user is assigned
-        if (queryDto.getAssignedToId() != null) {
-            User assignedTo = userRepository.findById(queryDto.getAssignedToId())
+        // Single assignedToId (legacy) takes priority; otherwise use first of assignedToIds
+        Long singleAssignedId = queryDto.getAssignedToId();
+        if (singleAssignedId == null && queryDto.getAssignedToIds() != null && !queryDto.getAssignedToIds().isEmpty()) {
+            singleAssignedId = queryDto.getAssignedToIds().get(0);
+        }
+        if (singleAssignedId != null) {
+            User assignedTo = userRepository.findById(singleAssignedId)
                     .orElseThrow(() -> new AppException("Assigned user not found"));
             builder.assignedTo(assignedTo);
         }
 
         Query query = builder.build();
 
-        // Check if similar queries exist (same tags) to determine popularity
-        // Only for public queries
+        // Popularity check
         if (!Boolean.TRUE.equals(query.getIsPrivate()) && queryDto.getTags() != null && !queryDto.getTags().isBlank()) {
             String[] tagArray = queryDto.getTags().split(",");
             for (String tag : tagArray) {
@@ -81,11 +92,22 @@ public class QueryServiceImpl implements QueryService {
 
         Query savedQuery = queryRepository.save(query);
 
-        // Fire notification for private query or specific assignment
+        // Notify the single assigned user (if any)
         if (savedQuery.getAssignedTo() != null) {
             notificationService.createPrivateQueryNotification(
                     savedQuery.getAssignedTo(), student,
                     savedQuery.getId(), savedQuery.getTitle());
+        }
+
+        // Notify additional recipients (assignedToIds beyond the first)
+        if (queryDto.getAssignedToIds() != null && queryDto.getAssignedToIds().size() > 1) {
+            for (int i = 1; i < queryDto.getAssignedToIds().size(); i++) {
+                Long recipientId = queryDto.getAssignedToIds().get(i);
+                userRepository.findById(recipientId).ifPresent(recipient ->
+                    notificationService.createQueryAssignedNotification(
+                            recipient, student, savedQuery.getId(), savedQuery.getTitle())
+                );
+            }
         }
 
         return mapToQueryDto(savedQuery);
@@ -261,8 +283,52 @@ public class QueryServiceImpl implements QueryService {
                 expert, student, query.getId(), query.getTitle());
     }
 
+    @Override
+    @Transactional
+    public QueryDto toggleUpvote(Long queryId, String username) {
+        Query query = queryRepository.findById(queryId)
+                .orElseThrow(() -> new RuntimeException("Query not found"));
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        String ids = query.getUpvotedByIds() != null ? query.getUpvotedByIds() : "";
+        String userId = String.valueOf(user.getId());
+        boolean alreadyUpvoted = ids.contains("," + userId + ",") ||
+                ids.startsWith(userId + ",") ||
+                ids.endsWith("," + userId) ||
+                ids.equals(userId);
+
+        if (alreadyUpvoted) {
+            // Remove upvote
+            String updated = java.util.Arrays.stream(ids.split(","))
+                    .filter(s -> !s.trim().equals(userId))
+                    .collect(java.util.stream.Collectors.joining(","));
+            query.setUpvotedByIds(updated.isBlank() ? null : updated);
+            query.setUpvoteCount(Math.max(0, (query.getUpvoteCount() != null ? query.getUpvoteCount() : 0) - 1));
+        } else {
+            // Add upvote
+            query.setUpvotedByIds(ids.isBlank() ? userId : ids + "," + userId);
+            query.setUpvoteCount((query.getUpvoteCount() != null ? query.getUpvoteCount() : 0) + 1);
+        }
+        return mapToQueryDtoForUser(queryRepository.save(query), user);
+    }
+
     private QueryDto mapToQueryDto(Query query) {
+        return mapToQueryDtoForUser(query, null);
+    }
+
+    private QueryDto mapToQueryDtoForUser(Query query, User currentUser) {
         int responseCount = query.getResponses() != null ? query.getResponses().size() : 0;
+        int upvotes = query.getUpvoteCount() != null ? query.getUpvoteCount() : 0;
+        boolean hasUpvoted = false;
+        if (currentUser != null && query.getUpvotedByIds() != null) {
+            String uid = String.valueOf(currentUser.getId());
+            String ids = query.getUpvotedByIds();
+            hasUpvoted = ids.contains("," + uid + ",") ||
+                    ids.startsWith(uid + ",") ||
+                    ids.endsWith("," + uid) ||
+                    ids.equals(uid);
+        }
         return QueryDto.builder()
                 .id(query.getId())
                 .title(query.getTitle())
@@ -278,6 +344,8 @@ public class QueryServiceImpl implements QueryService {
                 .targetRoles(query.getTargetRoles())
                 .popularCount(query.getPopularCount())
                 .isPopular(query.getIsPopular())
+                .upvoteCount(upvotes)
+                .hasUpvoted(hasUpvoted)
                 .satisfiedWithCommunityAnswer(query.getSatisfiedWithCommunityAnswer())
                 .isPrivate(query.getIsPrivate())
                 .createdAt(query.getCreatedAt())

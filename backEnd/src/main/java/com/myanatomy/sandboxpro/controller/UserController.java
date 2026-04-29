@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -82,6 +83,34 @@ public class UserController {
             List<UserDto> users = userService.searchExperts(
                     authentication.getName(), role, industry, college);
             return ResponseEntity.ok(ApiResponse.success("Experts fetched", users));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * Search users to send a query to, with rich filters.
+     * roles: comma-separated list (SENIOR_STUDENT,ALUMNI,MENTOR)
+     * college, company, industry: partial match filters
+     * minReputation: minimum reputation points
+     * limit: max results (capped at 15)
+     */
+    @GetMapping("/query-targets")
+    public ResponseEntity<ApiResponse<List<UserDto>>> searchQueryTargets(
+            @RequestParam(required = false) String roles,
+            @RequestParam(required = false) String college,
+            @RequestParam(required = false) String company,
+            @RequestParam(required = false) String industry,
+            @RequestParam(required = false) Integer minReputation,
+            @RequestParam(defaultValue = "15") int limit,
+            Authentication authentication) {
+        try {
+            List<String> roleList = (roles != null && !roles.isBlank())
+                    ? Arrays.asList(roles.split(","))
+                    : null;
+            List<UserDto> users = userService.searchUsersForQuery(
+                    authentication.getName(), roleList, college, company, industry, minReputation, limit);
+            return ResponseEntity.ok(ApiResponse.success("Query targets fetched", users));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }

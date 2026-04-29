@@ -56,11 +56,11 @@ const QueryDetail = () => {
     try {
       await queryService.submitResponse(id, { content: responseText.trim() });
       setResponseText('');
-      setSuccess('Response submitted successfully!');
+      setSuccess('Response submitted! +5 reputation points earned.');
       await fetchQuery();
-      setTimeout(() => setSuccess(''), 3000);
+      setTimeout(() => setSuccess(''), 4000);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to submit response');
+      setError(err.message || 'Failed to submit response');
     } finally {
       setSubmitting(false);
     }
@@ -258,7 +258,7 @@ const QueryDetail = () => {
                 )}
 
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center text-primary font-bold text-sm">
+                  <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center text-primary font-bold text-sm overflow-hidden">
                     {r.mentorProfilePicture ? (
                       <img src={r.mentorProfilePicture} alt={r.mentorName} className="w-full h-full object-cover rounded-xl" />
                     ) : getInitials(r.mentorName)}
@@ -292,22 +292,39 @@ const QueryDetail = () => {
       {/* Submit Response */}
       {canRespond && (
         <div className="bg-[#0c1427]/80 rounded-2xl p-6 border border-white/5">
-          <h3 className="text-[#dee5ff] font-black mb-4">Your Response</h3>
-          <form onSubmit={handleSubmitResponse} className="space-y-4">
-            <textarea
-              value={responseText}
-              onChange={e => setResponseText(e.target.value)}
-              className="w-full bg-[#060e1d] border border-white/10 rounded-xl px-4 py-3 text-[#dee5ff] placeholder-[#9baad6]/40 focus:border-primary/50 focus:outline-none transition-all resize-none"
-              placeholder="Share your knowledge and experience..."
-              rows={5}
-            />
-            <button
-              type="submit"
-              disabled={submitting || !responseText.trim()}
-              className="px-8 py-3 bg-primary text-on-primary rounded-xl font-bold hover:bg-primary/90 disabled:opacity-50 transition-all"
-            >
-              {submitting ? 'Submitting...' : 'Post Response'}
-            </button>
+          <h3 className="text-[#dee5ff] font-black mb-1 flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary text-lg">edit</span>
+            Write an Answer
+          </h3>
+          <p className="text-[#9baad6] text-xs mb-4">Share your knowledge and experience. Earn +5 reputation points.</p>
+          <form onSubmit={handleSubmitResponse} className="space-y-3">
+            <div className="relative">
+              <textarea
+                value={responseText}
+                onChange={e => setResponseText(e.target.value)}
+                className="w-full bg-[#060e1d] border border-white/10 rounded-xl px-4 py-3 text-[#dee5ff] placeholder-[#9baad6]/40 focus:border-primary/50 focus:outline-none transition-all resize-none text-sm leading-relaxed"
+                placeholder="Share your knowledge, experience, or advice. Be specific and helpful..."
+                rows={6}
+                maxLength={2000}
+              />
+              <span className={`absolute bottom-3 right-3 text-[10px] font-medium ${responseText.length > 1800 ? 'text-yellow-400' : 'text-[#9baad6]/40'}`}>
+                {responseText.length}/2000
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <p className="text-[#9baad6]/60 text-xs">Tip: Be specific, share examples, and explain your reasoning.</p>
+              <button
+                type="submit"
+                disabled={submitting || !responseText.trim()}
+                className="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded-xl font-bold text-sm hover:bg-primary/90 disabled:opacity-50 transition-all active:scale-95"
+              >
+                {submitting ? (
+                  <><div className="w-4 h-4 border-2 border-on-primary/30 border-t-on-primary rounded-full animate-spin" />Posting...</>
+                ) : (
+                  <><span className="material-symbols-outlined text-sm">send</span>Post Answer</>
+                )}
+              </button>
+            </div>
           </form>
         </div>
       )}

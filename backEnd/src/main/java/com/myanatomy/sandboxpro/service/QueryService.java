@@ -16,6 +16,7 @@ public interface QueryService {
     List<QueryDto> getAssignedQueries(String username);
     List<QueryDto> getQueriesForRole(UserRole role);
     List<QueryDto> getUnresolvedQueries();
+    QueryDto toggleUpvote(Long queryId, String username);
 
     ResponseDto submitResponse(Long queryId, ResponseDto responseDto, String mentorUsername);
     void markAsBestAnswer(Long responseId, String studentUsername);
